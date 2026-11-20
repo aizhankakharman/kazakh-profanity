@@ -259,12 +259,19 @@ python scripts/evaluate.py                 # threshold on val, metrics on test -
 ## 6. Predicting on new comments
 
 The trained model (weights, tokenizer files, GLiNER config and `decision.json` with the threshold) is in
-`models/kazakh-profanity-gliner/` after training and on Hugging Face: **<https://huggingface.co/aizhankakharman/kazakh-profanity-gliner>**.
+`models/kazakh-profanity-gliner/` after training, and is attached to the GitHub release **v1.0**:
+<https://github.com/aizhankakharman/kazakh-profanity/releases/download/v1.0/kazakh-profanity-gliner.zip>
+
+```bash
+# download the trained model (1.1 GB) - no training needed
+wget https://github.com/aizhankakharman/kazakh-profanity/releases/download/v1.0/kazakh-profanity-gliner.zip
+unzip kazakh-profanity-gliner.zip -d models/      # -> models/kazakh-profanity-gliner/
+```
 
 ```bash
 python scripts/predict.py "Телефон қотақ екен, екі аптада экраны сынды"
 python scripts/predict.py -i                       # interactive: type comments, empty line to exit
-python scripts/predict.py --model aizhankakharman/kazakh-profanity-gliner "..."
+python scripts/predict.py --model models/kazakh-profanity-gliner "..."
 ```
 
 ```python
