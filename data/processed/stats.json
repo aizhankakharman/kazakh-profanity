@@ -6,10 +6,10 @@
   "names_masked": 816,
   "splits": {
     "train": {
-      "total": 8496,
-      "profane": 2665,
-      "clean": 5831,
-      "synthetic": 900,
+      "total": 9302,
+      "profane": 3326,
+      "clean": 5976,
+      "synthetic": 1706,
       "hard_negatives": 1256,
       "by_domain": {
         "market": 2764,
@@ -22,7 +22,9 @@
         "appstore": 2142,
         "bookstore": 13,
         "mapping": 5
-      }
+      },
+      "synthetic_phonetic": 514,
+      "synthetic_caps": 292
     },
     "val": {
       "total": 1518,

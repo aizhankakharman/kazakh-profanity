@@ -59,6 +59,15 @@ def _windows(text: str) -> list[tuple[int, str]]:
     return out
 
 
+# 3+ single letters separated by . - _  ("п.и.з.д.е.ц" -> "пиздец")
+_SPACED = re.compile(r"(?<!\w)(?:[^\W\d_][.\-_]){2,}[^\W\d_](?!\w)")
+
+
+def normalize(text: str) -> str:
+    """Join letters separated by dots/dashes/underscores before the model."""
+    return _SPACED.sub(lambda m: re.sub(r"[.\-_]", "", m.group()), text)
+
+
 class ProfanityDetector:
     def __init__(self, model_dir: str | Path, threshold: float | None = None, device: str | None = None):
         from gliner import GLiNER
@@ -105,6 +114,7 @@ class ProfanityDetector:
 
     def predict_batch(self, texts: list[str]) -> list[dict]:
         out = []
+        texts = [normalize(t) for t in texts]
         for text, spans in zip(texts, self.spans_batch(texts, min_score=SCORE_FLOOR)):
             score = max((sp.score for sp in spans), default=0.0)
             out.append({

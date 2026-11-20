@@ -8,6 +8,12 @@ Two kinds:
   * obfuscated: a real train positive whose obscene words are rewritten the way
                 people dodge filters: "*" masks, Latin transliteration, Russian
                 keyboard letters, stretched letters.
+  * phonetic:   (added in v1.1, scripts/augment_extra.py) a real train positive
+                whose obscene words are written "as heard": voiced consonants
+                devoiced (б→п, д→т, з→с, г→к, ж→ш, в→ф), unstressed vowels swapped
+                (о→а, е→и), and sometimes glued to the next word ("ептвоемать").
+  * caps:       (v1.1) an ALL-CAPS copy of a real train comment, profane or clean,
+                so "ЕБАТЬ ОЙЫН" and "ҚОТАҚ" look like their lower-case forms.
 Every synthetic example keeps the group id of the review it was built from, so it
 can never leak into val/test.
 """
@@ -104,4 +110,60 @@ def make_synthetic(train: list[dict], rng: random.Random, n_market: int, n_obfus
         text, spans = _replace_spans(base["text"], base["spans"], lambda w: obfuscate(w, rng))
         out.append({**base, "id": f"synth_obf_{i}", "text": text, "spans": spans, "label": 1,
                     "source": "synthetic", "hard_negative": False})
+    return out
+
+
+# --- v1.1: "as heard" spellings --------------------------------------------------
+SOUND = {"б": "п", "д": "т", "з": "с", "г": "к", "ж": "ш", "в": "ф", "о": "а", "е": "и"}
+
+
+def phonetic(word: str, rng: random.Random) -> str:
+    """Rewrite 1-2 letters the way the word sounds: заебал -> заепал, пиздец -> писдец."""
+    pos = [i for i, ch in enumerate(word) if ch.lower() in SOUND]
+    if not pos:
+        return word
+    chars = list(word)
+    for i in rng.sample(pos, min(len(pos), rng.choice([1, 1, 2]))):
+        new = SOUND[chars[i].lower()]
+        chars[i] = new.upper() if chars[i].isupper() else new
+    return "".join(chars)
+
+
+def _glue_next(text: str, span: list[int]) -> tuple[str, list[int]] | None:
+    """Glue the profane word to the next word: "еп твою" -> "ептвою"; the span covers both."""
+    s, e = span
+    m = re.match(r"\s+(\w+)", text[e:])
+    if not m:
+        return None
+    glued = text[:e] + text[e + len(m.group(0)) - len(m.group(1)):]
+    return glued, [s, e + len(m.group(1))]
+
+
+def make_phonetic(train: list[dict], rng: random.Random, n: int, glue_rate: float = 0.3) -> list[dict]:
+    real_pos = [r for r in train if r["label"] == 1 and r["source"] == "kazsandra"]
+    out = []
+    for base in rng.sample(real_pos, min(n, len(real_pos))):
+        text, spans = _replace_spans(base["text"], base["spans"], lambda w: phonetic(w, rng))
+        if rng.random() < glue_rate and len(spans) == 1:
+            glued = _glue_next(text, spans[0])
+            if glued:
+                text, spans = glued[0], [glued[1]]
+        if text == base["text"]:
+            continue
+        out.append({**base, "id": f"synth_phon_{len(out)}", "text": text, "spans": spans, "label": 1,
+                    "source": "synthetic", "hard_negative": False})
+    return out
+
+
+def make_caps(train: list[dict], rng: random.Random, n_pos: int, n_neg: int) -> list[dict]:
+    """ALL-CAPS copies of real comments (both classes), spans unchanged."""
+    real = [r for r in train if r["source"] == "kazsandra"]
+    pos = [r for r in real if r["label"] == 1]
+    neg = [r for r in real if r["label"] == 0]
+    out = []
+    for base in rng.sample(pos, min(n_pos, len(pos))) + rng.sample(neg, min(n_neg, len(neg))):
+        text = base["text"].upper()
+        if len(text) != len(base["text"]) or text == base["text"]:
+            continue
+        out.append({**base, "id": f"synth_caps_{len(out)}", "text": text, "source": "synthetic"})
     return out

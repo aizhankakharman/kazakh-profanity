@@ -44,6 +44,7 @@ def check_text(text: str):
     if not text or not text.strip():
         return "", ""
     res = detector().predict(text)
+    text = res["text"]          # text after normalization (offsets match it)
     out, pos = [], 0
     for sp in res["spans"]:
         out.append(html.escape(text[pos:sp["start"]]))
@@ -51,7 +52,12 @@ def check_text(text: str):
                    f'{html.escape(sp["text"])}</mark>')
         pos = sp["end"]
     out.append(html.escape(text[pos:]))
-    verdict = "1 — мат бар (profane)" if res["label"] else "0 — таза (clean)"
+    if res["label"]:
+        verdict = "1 — мат бар (profane)"
+    elif res["score"] >= 0.5:
+        verdict = "0 — ⚠️ күмәнді, модераторға (borderline: send to a moderator)"
+    else:
+        verdict = "0 — таза (clean)"
     words = ", ".join(f'{s["text"]} ({s["score"]:.2f})' for s in res["spans"]) or "—"
     summary = (f"**Label:** {verdict}  \n**Score:** {res['score']:.3f} "
                f"(threshold {detector().threshold})  \n**Words:** {words}")
