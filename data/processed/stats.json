@@ -1,0 +1,64 @@
+{
+  "seed": 42,
+  "sampled": 10759,
+  "after_exact_dedup": 10633,
+  "near_duplicate_groups": 10310,
+  "names_masked": 816,
+  "splits": {
+    "train": {
+      "total": 8496,
+      "profane": 2665,
+      "clean": 5831,
+      "synthetic": 900,
+      "hard_negatives": 1256,
+      "by_domain": {
+        "market": 2764,
+        "appstore": 4896,
+        "mapping": 531,
+        "bookstore": 305
+      },
+      "profane_by_domain": {
+        "market": 505,
+        "appstore": 2142,
+        "bookstore": 13,
+        "mapping": 5
+      }
+    },
+    "val": {
+      "total": 1518,
+      "profane": 353,
+      "clean": 1165,
+      "synthetic": 0,
+      "hard_negatives": 238,
+      "by_domain": {
+        "appstore": 920,
+        "mapping": 104,
+        "bookstore": 60,
+        "market": 434
+      },
+      "profane_by_domain": {
+        "appstore": 350,
+        "mapping": 1,
+        "bookstore": 2
+      }
+    },
+    "test": {
+      "total": 1519,
+      "profane": 353,
+      "clean": 1166,
+      "synthetic": 0,
+      "hard_negatives": 253,
+      "by_domain": {
+        "appstore": 914,
+        "bookstore": 62,
+        "mapping": 127,
+        "market": 416
+      },
+      "profane_by_domain": {
+        "appstore": 350,
+        "bookstore": 1,
+        "mapping": 2
+      }
+    }
+  }
+}

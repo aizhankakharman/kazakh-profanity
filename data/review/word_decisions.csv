@@ -1,0 +1,52 @@
+word,obscene,note
+қ*ақбас,1,masked қотақбас
+н***,1,"masked нахуй (""н*** керек емес"")"
+қ*******,1,masked қотақбас (length 8)
+қ****бас,1,masked қотақбас
+*****бас,1,masked қотақбас
+қота*бас,1,masked қотақбас
+қо*ақ,1,masked қотақ
+қо*ақбас,1,masked қотақбас
+қо***бас,1,masked қотақбас
+қо*аққо,1,masked қотақ + particle
+қ****м,1,masked қотағым
+ко******,1,masked котакбас
+с**а,1,masked сука
+су**,1,masked сука
+далб**п,1,masked далбайоп
+дал*айоп,1,masked далбайоп
+дал******ба**йо*п,1,masked далбайоп
+далба**,1,masked далбаеб
+дал**,1,masked далбаеб (context: insult)
+б**,1,masked бля
+б*әә,1,masked бләә
+б**т,1,masked блят
+б****,1,masked блять
+к*т,1,masked көт
+к*ттерің,1,masked көттерің
+к*тінде,1,masked көтінде
+sig*****p,1,masked sigilip
+н*х*й,1,masked нахуй
+н*ху,1,masked наху(й)
+не*уя,1,masked нехуя
+дах*я,1,masked дахуя
+с**ейін,1,masked сігейін
+ё*тваймач,1,masked ёб твою мать
+з*****,1,masked зайбал
+з*******,1,masked заебался
+за*б*л,1,masked заебал
+п***ес,1,masked пиздес
+п*з,1,masked пиздец
+а*,1,masked ам
+көтеріңе,1,plural of көт with one т (not көтеру 'lift')
+көтеріңді,1,plural of көт with one т (not көтеру 'lift')
+көтеріңнен,1,plural of көт with one т (not көтеру 'lift')
+м*л,0,masked мал 'cattle' - insult not obscene
+м**,0,unidentifiable mask (probably мал)
+м****ны,0,unidentifiable mask
+е*шак,0,masked ешак 'donkey' - insult not obscene
+с**с,0,masked секс - not obscene
+ш**********,0,unidentifiable mask
+б**********,0,unidentifiable mask
+шешен***,0,шешең 'your mother' alone is not obscene
+ше***,0,unidentifiable mask

@@ -1,0 +1,15 @@
+gliner[training]==0.2.30
+torch>=2.11
+torchaudio>=2.11
+transformers>=5.0,<5.23
+pandas
+scikit-learn
+datasketch
+matplotlib
+pymupdf
+python-docx
+soundfile
+hydra-core
+omegaconf
+sentencepiece
+gradio
