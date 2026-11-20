@@ -73,20 +73,28 @@ def redact(doc):
     return str(dst), f"Redacted spans: **{n}**"
 
 
-def bleep(media):
+def bleep(media, corrected=""):
     if media is None:
-        return None, None, ""
+        return None, None, "", ""
     from kzprof.video import censor_media
 
     src = Path(media)
     out_dir = Path(tempfile.mkdtemp())
-    report = censor_media(detector(), asr(), src, out_dir / f"{src.stem}.censored{src.suffix}")
+    try:
+        report = censor_media(detector(), asr(), src, out_dir / f"{src.stem}.censored{src.suffix}",
+                              corrected=corrected or None)
+    except ValueError as e:                      # corrected transcript has a different word count
+        return None, None, f"**Correction not applied:** {e}", corrected
     out = report["output"]
     is_video = out.lower().endswith((".mp4", ".mov", ".mkv", ".webm", ".avi"))
     beeps = ", ".join(f"{s:.2f}–{e:.2f}s" for s, e in report["beeps"]) or "—"
-    md = (f"**Transcript (GigaAM):** {report['transcript']}\n\n"
-          f"**Censored:** {report['censored_transcript']}\n\n**Beeps:** {beeps}")
-    return (out if is_video else None), (None if is_video else out), md
+    if report["corrected_by_human"]:
+        head = (f"**Transcript (GigaAM):** {report['asr_transcript']}\n\n"
+                f"**Corrected by a moderator:** {report['transcript']}\n\n")
+    else:
+        head = f"**Transcript (GigaAM):** {report['transcript']}\n\n"
+    md = head + f"**Censored:** {report['censored_transcript']}\n\n**Beeps:** {beeps}"
+    return (out if is_video else None), (None if is_video else out), md, report["transcript"]
 
 
 def build() -> gr.Blocks:
@@ -115,7 +123,11 @@ def build() -> gr.Blocks:
             video_out = gr.Video(label="Censored video")
             audio_out = gr.Audio(label="Censored audio", type="filepath")
             media_info = gr.Markdown()
-            media_btn.click(bleep, media_in, [video_out, audio_out, media_info])
+            fix_box = gr.Textbox(label="Moderator: fix speech-recognition mistakes here (change words, keep their "
+                                       "number), then press the button below", lines=3)
+            fix_btn = gr.Button("Bleep again with my corrections")
+            media_btn.click(lambda m: bleep(m, ""), media_in, [video_out, audio_out, media_info, fix_box])
+            fix_btn.click(bleep, [media_in, fix_box], [video_out, audio_out, media_info, fix_box])
     return demo
 
 

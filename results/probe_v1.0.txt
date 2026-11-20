@@ -1,0 +1,33 @@
+model=models/kazakh-profanity-gliner  threshold=0.93  device=cuda
+label=1  score=0.981  words: заепал (0.98)
+  заепал баска тауар салып жиберген
+label=0  score=0.276  words: -
+  ептвоемать баска тауар салып жиберген
+label=1  score=0.961  words: писдец (0.96)
+  писдец сапасы, бір аптада сынды
+label=1  score=0.993  words: пиздец (0.99)
+  пиздец екен
+label=1  score=0.992  words: қотақ (0.99)
+  Телефон қотақ екен
+label=0  score=0.018  words: -
+  қатақ телефон екен
+label=0  score=0.308  words: -
+  ЕБАТЬ ОЙЫН
+label=1  score=0.954  words: КӨТІҢДІ (0.95)
+  КӨТІҢДІ ҚЫСЫП ЖҮР
+label=0  score=0.063  words: -
+  зб баска тауар салып жиберген
+label=0  score=0.015  words: -
+  Сапасы нашар, ақшама өкінемін
+label=0  score=0.183  words: -
+  САПАСЫ НАШАР, АЛМАҢЫЗДАР
+label=0  score=0.000  words: -
+  Курьер ақымақ екен, бірақ тауар жақсы
+label=0  score=0.024  words: -
+  Көтеру механизмі мықты, жүкті оңай көтереді
+label=0  score=0.022  words: -
+  Писатель туралы кітап, балама ұнады
+label=0  score=0.011  words: -
+  Дебет картасымен төледім, тез жеткізді
+label=0  score=0.000  words: -
+  Заказ уақытында келді, рахмет

@@ -12,12 +12,53 @@ comment and predicts whether it contains **Kazakh profanity**:
 * the model also returns **which words** are profane, which powers two extras: blacking out profanity in
   documents (PDF / DOCX / TXT) and bleeping it in videos (ffmpeg + GigaAM speech recognition)
 
-**Held-out test set** (1,519 real reviews, 353 profane; threshold 0.93 chosen on validation):
+**Held-out test set** (1,519 real reviews, 353 profane; threshold chosen on validation):
 
-| Model | Precision | Recall | F1 | FP | FN |
-|---|---:|---:|---:|---:|---:|
-| **Fine-tuned GLiNER (this repo)** | **0.983** | **0.963** | **0.973** | 6 | 13 |
-| Baseline: char n-gram TF-IDF + logistic regression | 0.967 | 0.921 | 0.943 | 11 | 28 |
+| Model | Threshold | Precision | Recall | F1 | FP | FN |
+|---|---:|---:|---:|---:|---:|---:|
+| **Fine-tuned GLiNER v1.1 (this repo)** | 0.77 | **0.977** | **0.975** | **0.976** | 8 | 9 |
+| Fine-tuned GLiNER v1.0 | 0.93 | 0.983 | 0.963 | 0.973 | 6 | 13 |
+| Baseline: char n-gram TF-IDF + logistic regression | 0.56 | 0.967 | 0.921 | 0.943 | 11 | 28 |
+
+### What changed in v1.1
+
+Testing the v1.0 model by hand showed three weak spots, all listed in its error analysis: words spelled "as heard"
+(заепал, писдец) or glued to the next word (ептвоемать), ALL CAPS ("ЕБАТЬ ОЙЫН"), and letters separated by dots
+("п.и.з.д.е.ц"). v1.1 fixes them without touching validation or test:
+
+1. **Phonetic synthetic examples** (`kzprof/synthetic.py`, `scripts/augment_extra.py`): 514 real train positives
+   rewritten as heard — б→п, д→т, з→с, г→к, ж→ш, в→ф, о→а, е→и — 30 % of them glued to the next word.
+2. **Case augmentation**: 292 ALL-CAPS copies of real train comments (147 profane, 145 clean).
+3. **Normalisation before the model** (`kzprof/inference.py`): 3+ single letters separated by `.`, `-` or `_` are
+   joined ("п.и.з.д.е.ц" → "пиздец"). No validation or test comment contains such a pattern, so the metrics are
+   not affected by it.
+4. **Borderline zone in the web demo** (`app.py`): a comment with 0.5 ≤ score < threshold is shown as
+   "send to a moderator"; the 0/1 label is unchanged.
+
+The model was retrained on Google Colab (T4 GPU) with the same settings and seed, and the threshold was chosen
+again on validation. Hand-written probe (`examples/probe_phonetic.txt`, not part of any split):
+
+| Comment | v1.0 score → label | v1.1 score → label |
+|---|---:|---:|
+| ептвоемать баска тауар салып жиберген | 0.276 → 0 | **0.776 → 1** |
+| қатақ телефон екен *(о→а)* | 0.018 → 0 | **0.988 → 1** |
+| ЕБАТЬ ОЙЫН | 0.308 → 0 | **0.958 → 1** |
+| п.и.з.д.е.ц екен *(normalised)* | 0.993 → 1 | 0.986 → 1 |
+| заепал баска тауар салып жиберген | 0.981 → 1 | 0.986 → 1 |
+| писдец сапасы, бір аптада сынды | 0.961 → 1 | 0.981 → 1 |
+| зб баска тауар салып жиберген *(abbreviation, 0 by the rules)* | 0.063 → 0 | 0.079 → 0 |
+| САПАСЫ НАШАР, АЛМАҢЫЗДАР | 0.183 → 0 | 0.093 → 0 |
+| Курьер ақымақ екен, бірақ тауар жақсы | 0.000 → 0 | 0.020 → 0 |
+| Көтеру механизмі мықты, жүкті оңай көтереді | 0.024 → 0 | 0.031 → 0 |
+| Писатель туралы кітап, балама ұнады | 0.022 → 0 | 0.015 → 0 |
+
+(The v1.0 column already includes the dot normalisation, so "п.и.з.д.е.ц" is caught by both.) Outputs:
+`results/probe_v1.0.txt`, `results/probe_v1.1.txt`.
+
+**Honest note on the test set.** The test set had already been used once to report v1.0. v1.1 was designed from
+hand-written examples and the v1.0 error analysis, not from test predictions, and its threshold was chosen on
+validation only; still, the test set is no longer completely unseen, so the small F1 gain (0.973 → 0.976) should
+be read with that in mind.
 
 ---
 
@@ -58,6 +99,7 @@ kzprof/inference.py           ProfanityDetector: load the model, predict label/s
 kzprof/redact.py              black out profanity in PDF / DOCX / TXT
 kzprof/video.py               bleep profanity in video/audio (ffmpeg + GigaAM + the model)
 scripts/prepare_data.py       build the dataset from KazSAnDRA
+scripts/augment_extra.py      v1.1: add phonetic and ALL-CAPS synthetic examples to train
 scripts/train.py              fine-tune GLiNER
 scripts/evaluate.py           pick the threshold on val, evaluate once on test
 scripts/predict.py            predict on your own text (CLI / interactive)
@@ -162,15 +204,19 @@ Profane words are shown between ⟦ ⟧.
   **seed 42**. Two runs with different `PYTHONHASHSEED` produce byte-identical splits.
 * **Synthetic examples — train split only, `source = "synthetic"`**: 500 real `market` reviews with one real
   obscene word inserted (30 % of them obfuscated) and 400 obfuscated copies of real train positives (`*` mask,
-  Latin, Russian keyboard, stretched letters). Each keeps the group of its source review. Validation and test
-  are 100 % real reviews.
+  Latin, Russian keyboard, stretched letters). **v1.1 adds** (`python scripts/augment_extra.py`, seed 42, run after
+  `prepare_data.py`) 514 phonetic copies of real positives (заебал → заепал, sometimes glued to the next word) and
+  292 ALL-CAPS copies of real comments of both classes. Each keeps the group of its source review. Validation and
+  test are 100 % real reviews and identical in v1.0 and v1.1.
 
 | Split | Total | Profane (1) | Clean (0) | Synthetic | Hard negatives |
 |---|---:|---:|---:|---:|---:|
-| train | 8,496 | 2,665 | 5,831 | 900 | 1,225 |
-| val | 1,518 | 353 | 1,165 | 0 | 249 |
-| test | 1,519 | 353 | 1,166 | 0 | 246 |
-| **total** | **11,533** | **3,371** | **8,162** | **900** | |
+| train (v1.1) | 9,302 | 3,326 | 5,976 | 1,706 | 1,256 |
+| val | 1,518 | 353 | 1,165 | 0 | 238 |
+| test | 1,519 | 353 | 1,166 | 0 | 253 |
+| **total** | **12,339** | **4,032** | **8,307** | **1,706** | |
+
+(v1.0 train: 8,496 comments, 2,665 profane, 900 synthetic.)
 
 Real comments: 10,633, of which 2,471 profane (23 %). Natural prevalence in KazSAnDRA is ≈1.5 %; the sample is
 enriched so that the model sees enough positives (see Limitations).
@@ -214,7 +260,9 @@ label(comment) = 1  if score ≥ threshold,  else 0      (threshold chosen on va
    into known subwords (`Қотақбас` → `▁Қо`, `тақ`, `бас`).
 3. The encoder produces a vector per word (first subword); GLiNER builds a vector for every span of up to 12
    words and compares it with the label vector → sigmoid probability.
-4. **Long comments**: training uses the first 128 words (99 % of reviews are shorter than 50 words); at inference
+4. **Normalisation** (v1.1, inference only): 3+ single letters separated by `.`, `-` or `_` are joined first
+   ("п.и.з.д.е.ц" → "пиздец"); otherwise every letter would be a separate word.
+5. **Long comments**: training uses the first 128 words (99 % of reviews are shorter than 50 words); at inference
    `kzprof/inference.py` cuts longer texts into overlapping 200-word windows, so nothing is ignored.
 
 ### 4.3 Training
@@ -234,7 +282,7 @@ comments without entities.
 | Max length | 128 words |
 | Model selection | lowest validation loss (evaluated every half epoch) |
 | Seed | 42 (Python, NumPy, PyTorch, data order) |
-| Hardware | Apple M3 Pro (MPS), 26 min |
+| Hardware | v1.1: Google Colab T4 GPU, 19 min · v1.0: Apple M3 Pro (MPS), 26 min |
 
 Why the word embeddings are frozen: the 250k × 768 embedding matrix is 192 M of the 289 M parameters. Training it
 needs ~2.2 GB more memory for gradients and optimizer state (the Apple GPU ran out of memory) and invites
@@ -249,6 +297,7 @@ python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt            # exact versions; torch 2.11, gliner 0.2.30, transformers 5.22.2
 
 python scripts/prepare_data.py             # download KazSAnDRA, label, split -> data/processed/  (~5 min)
+python scripts/augment_extra.py            # v1.1: phonetic + ALL-CAPS examples, train split only
 python scripts/train.py                    # fine-tune -> models/kazakh-profanity-gliner/       (~30 min on M3 Pro / T4)
 python scripts/evaluate.py                 # threshold on val, metrics on test -> results/
 ```
@@ -259,12 +308,13 @@ python scripts/evaluate.py                 # threshold on val, metrics on test -
 ## 6. Predicting on new comments
 
 The trained model (weights, tokenizer files, GLiNER config and `decision.json` with the threshold) is in
-`models/kazakh-profanity-gliner/` after training, and is attached to the GitHub release **v1.0**:
-<https://github.com/aizhankakharman/kazakh-profanity/releases/download/v1.0/kazakh-profanity-gliner.zip>
+`models/kazakh-profanity-gliner/` after training, and is attached to the GitHub release **v1.1**:
+<https://github.com/aizhankakharman/kazakh-profanity/releases/download/v1.1/kazakh-profanity-gliner.zip>
+(the v1.0 model stays available in release v1.0).
 
 ```bash
 # download the trained model (1.1 GB) - no training needed
-wget https://github.com/aizhankakharman/kazakh-profanity/releases/download/v1.0/kazakh-profanity-gliner.zip
+wget https://github.com/aizhankakharman/kazakh-profanity/releases/download/v1.1/kazakh-profanity-gliner.zip
 unzip kazakh-profanity-gliner.zip -d models/      # -> models/kazakh-profanity-gliner/
 ```
 
@@ -285,16 +335,17 @@ Web demo: `python app.py` → <http://127.0.0.1:7860> (tabs: Text, Document, Vid
 
 ## 7. Results
 
-All numbers below are from `results/metrics.json`, produced by `scripts/evaluate.py`. The threshold was chosen on
-the validation set; the test set was evaluated **once**.
+All numbers below are for the **v1.1** model, from `results/metrics.json`, produced by `scripts/evaluate.py`. The
+threshold was chosen on the validation set; for the use of the test set see "Honest note" at the top.
 
 ### 7.1 Threshold (validation)
 
-`evaluate.py` scans thresholds 0.05–0.95 on validation and keeps the best F1 → **0.93** (val F1 0.969). Scores
-are strongly bimodal (most profane comments score > 0.98, most clean ones < 0.1), so the choice mostly trades a
-handful of borderline comments:
+`evaluate.py` scans thresholds 0.05–0.95 on validation and keeps the best F1 → **0.77** for v1.1 (val precision
+0.980, recall 0.969, F1 0.974; 7 FP, 11 FN). Scores are strongly bimodal (most profane comments score > 0.98, most
+clean ones < 0.1), so the choice mostly trades a handful of borderline comments. The scan for the v1.0 model shows
+the trade-off:
 
-| Threshold (val) | Precision | Recall | F1 | FP | FN |
+| Threshold (val, v1.0) | Precision | Recall | F1 | FP | FN |
 |---:|---:|---:|---:|---:|---:|
 | 0.50 | 0.927 | 0.977 | 0.952 | 27 | 8 |
 | 0.70 | 0.945 | 0.972 | 0.958 | 20 | 10 |
@@ -310,43 +361,44 @@ A moderation team that prefers to catch more profanity and review borderline cas
 | | Value |
 |---|---|
 | Test examples | 1,519 (353 profane, 1,166 clean; 100 % real reviews) |
-| Precision (profanity) | **0.983** |
-| Recall (profanity) | **0.963** |
-| F1 (profanity) | **0.973** |
-| Accuracy | 0.988 |
-| PR-AUC | 0.994 |
+| Precision (profanity) | **0.977** |
+| Recall (profanity) | **0.975** |
+| F1 (profanity) | **0.976** |
+| Accuracy | 0.989 |
+| PR-AUC | 0.997 |
 
 ![Test confusion matrix](results/confusion_matrix.png)
 
 | | predicted clean | predicted profane |
 |---|---:|---:|
-| **true clean** | 1,160 (TN) | 6 (FP) |
-| **true profane** | 13 (FN) | 340 (TP) |
+| **true clean** | 1,158 (TN) | 8 (FP) |
+| **true profane** | 9 (FN) | 344 (TP) |
 
 ![Precision-recall curve](results/pr_curve.png)
 
-**By domain** (test): appstore F1 0.974 (914 reviews, 350 profane, 5 FP, 13 FN); market 416 clean product reviews,
+**By domain** (test): appstore F1 0.977 (914 reviews, 350 profane, 7 FP, 9 FN); market 416 clean product reviews,
 **0 false positives**; mapping 127 reviews, 2/2 profane found, 0 FP; bookstore 62 reviews, 1/1 found, 1 FP. The test
 set contains no real profane product (`market`) review, so recall on product reviews specifically is not measured
 (see Limitations).
 
 **Hard negatives** (test comments with rude-but-not-obscene or look-alike words such as ақымақ, мал, боқ, көтеру):
-2 false positives out of 253 (0.8 %).
+4 false positives out of 253 (1.6 %; v1.0: 2).
 
-**Word level** (a predicted word counts as correct if it overlaps a labelled profane word): precision 0.971,
-recall 0.920, F1 0.945 (470 TP, 14 FP, 41 FN). Comment-level recall is higher than word-level recall because a
+**Word level** (a predicted word counts as correct if it overlaps a labelled profane word): precision 0.946,
+recall 0.963, F1 0.954 (492 TP, 28 FP, 19 FN; v1.0: F1 0.945). Comment-level recall is higher than word-level recall because a
 comment is caught as soon as one of its profane words is found.
 
 **Baseline.** A character 2–5-gram TF-IDF + logistic regression (vocabulary fitted on train only, threshold also
-tuned on validation) reaches F1 0.943 / PR-AUC 0.987. GLiNER halves its misses (13 vs 28 FN) and has fewer false
-alarms (6 vs 11), and in addition says *which* words are profane.
+tuned on validation) reaches F1 0.943 / PR-AUC 0.987 (on the v1.0 train split; 0.944 on the v1.1 one). GLiNER v1.1 has a third of
+its misses (9 vs 28 FN), fewer false alarms (8 vs 11), and in addition says *which* words are profane.
 
-**Training curve** (validation loss every half epoch): 0.497 → 0.374 → 0.454 → 0.282 → **0.252** (epoch 2.5,
-kept) → 0.266. Training loss 0.287 on average; 26 min on an M3 Pro.
+**Training curve v1.1** (validation loss every half epoch): 0.596 → 0.472 → 0.406 → 0.229 → **0.220** (epoch 2.5,
+kept) → 0.325. Training loss 0.329 on average; 19 min on a Colab T4. The rise at epoch 3 is the start of
+over-fitting, which is why the checkpoint with the lowest validation loss is kept.
 
 Files: `results/metrics.json`, `results/confusion_matrix.png`, `results/pr_curve.png`,
 `results/test_predictions.csv` (all 1,519 test comments with score, prediction and found words),
-`results/errors.csv` (the 19 errors), `results/training_log.json`.
+`results/errors.csv` (the 17 errors), `results/probe_v1.0.txt`, `results/probe_v1.1.txt`, `results/training_log.json`.
 
 ## 8. Error analysis
 
@@ -360,44 +412,38 @@ Files: `results/metrics.json`, `results/confusion_matrix.png`, `results/pr_curve
 
 For automatic pre-moderation both matter; the usual setup is *high recall + human review of flagged items*: a
 false negative is never seen by a moderator, while a false positive costs a moderator a few seconds. With this model
-that means lowering the threshold (≈0.5 gives recall 0.977 on validation) and sending flagged reviews to a human.
-The threshold in `decision.json` (0.93) is the F1-optimal one required by the evaluation protocol.
+that means sending borderline comments to a human: the web demo marks 0.5 ≤ score < threshold as "send to a
+moderator". The threshold in `decision.json` (0.77) is the F1-optimal one required by the evaluation protocol.
 
-### 8.2 The 19 test errors (`results/errors.csv`)
+### 8.2 The 17 test errors of v1.1 (`results/errors.csv`)
 
 | # | Type | Comment (shortened) | Score | Likely reason |
 |---|---|---|---:|---|
-| 1 | FN | "ЕБАТЬ ОЙЫН" | 0.31 | ALL CAPS (lower-case "ебать ойын" scores 0.98) |
-| 2 | FN | "ЕҢ КӨТТІ", "…КӨТІҢДІ ҚЫСЫП ЖҮР" | 0.84, 0.75 | ALL CAPS |
-| 3 | FN | "каншык оиын", "Клең жалептерғои…" | 0.10, 0.05 | rare words: қаншық appears 7 times in 175k reviews |
-| 4 | FP | "Zor karaoke", "gree 👍👍 Мықты пікір!" | 0.98, 0.96 | short Latin words |
-| 5 | FP | "…мəртебең кайта кокке котерілді" | 0.99 | look-alike: *көкке көтерілді* ("rose to the sky") typed without Kazakh letters |
-| 6 | FP→label error | "Фууууу блат не деген…" | 0.95 | the model is right: "блат" is "блять"; the labelling rule skipped it because Russian "блат" means "connections" |
-| 7 | FN→label error | "…вадава сигун титат волкан…" | 0.84 | the model is right: "Сигун" is a game character; the rule (с+и+г…) mislabelled it |
-| 8 | FN | "…орнына ("Зайбалсындар") деп жазылып тур бул не маскара?!" | 0.41 | the word is *quoted* (a complaint about a bad translation) — mention, not use |
-| 9 | FN | "1) 18+ балағат сөздерге жол берілген… көтті…" | 0.925 | just below the threshold |
-| 10 | FN | "Кірмейт, н\*\*\* керек емес" | 0.79 | heavy mask, only the first letter is visible |
+| 1 | FP | "Задалбал күнде жанарту керек" | 0.98 | **new in v1.1**: "задолбал" is a euphemism (0 by the rules), but it now looks like the phonetic forms of "заебал" |
+| 2 | FP | "Zor karaoke", "gree 👍👍 Мықты пікір!" | 0.92 | short Latin words |
+| 3 | FP | "…кайта кокке котерілді", "котен бас мал…", "Коты-ютуберы!!!" | 0.79–0.94 | look-alikes of көт: *көкке көтерілді* ("rose to the sky"), көтен (bottom), коты (cats) |
+| 4 | FP | "Әкеңнің аузын скин…", "Гебойййй йй йй…" | 0.83, 0.94 | a game word and a stretched nonsense word |
+| 5 | FN | "каншык оиын", "Клең жалептерғои…", "…ананын түрі блə" | 0.06–0.27 | rare words (қаншық appears 7 times in 175k reviews), Latin "ə" inside a Cyrillic word |
+| 6 | FN | "Корона вирус котынды кысып…", "Бір минусы котинди ашып берет" | 0.24, 0.76 | көт typed with о/и plus a case ending; "коты" alone is "code" in app reviews, so the context is ambiguous |
+| 7 | FN | "…орнына ("Зайбалсындар") деп жазылып тур…" | 0.71 | the word is *quoted* (a complaint about a bad translation) — mention, not use |
+| 8 | FN | "Кірмейт, н\*\*\* керек емес" | 0.71 | heavy mask, only the first letter is visible |
+| 9 | FN | "1) 18+ балағат сөздерге жол берілген… көтті…" | 0.74 | just below the threshold, inside a long list |
 
 Discussion of the main patterns:
 
-1. **Upper case.** mDeBERTa's tokenizer is case-sensitive: "ЕБАТЬ" is cut into different, rarer subword pieces
-   than "ебать", and upper-case versions of most words are rare in the training data (except "ҚОТАҚ", which users
-   often shout and the model does catch). *Fix:* add upper-cased copies of profane and clean training comments
-   (case augmentation), or feed the model a lower-cased copy of the text (offsets do not change for Cyrillic) —
-   either must be re-validated on the validation set before use.
-2. **Rare vocabulary.** Words with only a handful of training examples (қаншық, жәлеп + particles, the Latin-ə
-   "блə") get low scores. *Fix:* targeted synthetic examples for rare obscene words, or collect more comments from
-   social media where these words are frequent.
-3. **Latin script.** Latin-script Kazakh is rare in KazSAnDRA, and in the training data it appears mostly inside
-   obfuscated profanity (synthetic "qotaq", real "pizdes"), so the model learned "short Latin word ≈ suspicious".
-   *Fix:* add clean Latin-script Kazakh comments (2021 alphabet) as negatives.
-4. **Label noise works against the model.** Errors 6 and 7 are wrong labels from the rule-based pre-labelling;
-   the true test error count is 17, not 19. This is also evidence that the model learned meaning from examples
-   rather than copying the rules.
-5. **Policy questions.** Quoting a word (error 8) and partly masked words (error 10) are labelled 1 by our rules;
+1. **Fixed in v1.1.** All three v1.0 ALL-CAPS misses ("ЕБАТЬ ОЙЫН", "ЕҢ КӨТТІ", "КӨТІҢДІ ҚЫСЫП ЖҮР") are now
+   caught, and so are two v1.0 label-noise cases. Misses fell from 13 to 9.
+2. **A side effect of the phonetic examples.** "Задалбал" (a euphemism, clean by the rules) is now flagged: after
+   seeing заепал / сайбал as profane, the model treats "за…бал" forms as profane. *Fix:* add euphemisms
+   (задолбал, капец, блин) as hard negatives next to the phonetic positives.
+3. **Rare vocabulary.** Words with only a handful of training examples (қаншық, жәлеп + particles, "блə") still get
+   low scores. *Fix:* targeted synthetic examples for rare obscene words, or more comments from social media.
+4. **Latin script.** Latin-script Kazakh is rare in KazSAnDRA and appears mostly inside obfuscated profanity, so
+   "short Latin word" still looks suspicious. *Fix:* clean Latin-script Kazakh comments as negatives.
+5. **Policy questions.** Quoting a word (error 7) and partly masked words (error 8) are labelled 1 by our rules;
    a platform could reasonably decide otherwise. These are labelling-policy decisions, not model failures.
 
-### 8.3 Hand-written probe (not part of the test set)
+### 8.3 Hand-written probe for the v1.0 model (not part of the test set)
 
 | Comment | Score | Label |
 |---|---:|---:|
@@ -415,7 +461,7 @@ Discussion of the main patterns:
 The model generalises to obfuscations it never saw in training (digit-for-letter, Latin look-alike letters) and is
 not fooled by insults or look-alike ordinary words. Letter-by-letter separation ("п.и.з.д.е.ц") breaks it: the
 word splitter turns it into 11 one-letter tokens. *Fix:* a normalisation step that joins single letters separated
-by dots/spaces before prediction.
+by dots/spaces before prediction — added in v1.1 (`kzprof/inference.py`).
 
 ## 9. Extras: documents and video
 
@@ -436,7 +482,12 @@ by dots/spaces before prediction.
    ≤ 22 s pieces;
 3. the transcript goes through the same `ProfanityDetector`; each profane word gives a time interval
    (padded by 80/120 ms);
-4. ffmpeg mutes those intervals and mixes in a 1 kHz beep; the video stream is copied without re-encoding.
+4. **Moderator correction (v1.1, human in the loop)**: speech recognition can mishear a word (in a test clip
+   "қотағыма" was heard as "ботағыма", a real and harmless word, so the text model correctly left it alone). In the
+   web demo the transcript appears in an editable box; a moderator fixes the misheard words (same number of words,
+   so every word keeps its timestamps) and runs the text model again. The report then shows both the ASR and the
+   corrected transcript, so a human correction is never presented as model output.
+5. ffmpeg mutes those intervals and mixes in a 1 kHz beep; the video stream is copied without re-encoding.
    A JSON report with the transcript, the censored transcript and the beep times is written next to the output.
 
 **Demo on the files in `examples/`** (produced with the trained model):
@@ -461,12 +512,16 @@ by dots/spaces before prediction.
   reviews exist only as synthetic training examples, and the test set has no real one, so recall on real product
   reviews is not measured (precision on them is: 0 false positives on 416 clean product reviews).
 * **Prevalence.** 23 % of the test comments are profane; in KazSAnDRA overall it is ≈1.5 %. With the measured error
-  rates (recall 0.963, 6 false alarms per 1,166 clean comments) precision on a natural stream would be about 0.74.
+  rates (recall 0.975, 8 false alarms per 1,166 clean comments) precision on a natural stream would be about 0.68.
   The threshold should be re-tuned on a sample with natural prevalence before deployment.
 * **Context.** Some forms are ambiguous (коты = "code" vs көт; сығу "squeeze" vs сігу); labels follow the most
   frequent meaning, and the model can only partly use context to tell them apart. Quotes and mentions are treated
   as use.
-* **Weak spots** found in the error analysis: ALL CAPS, rare words, short Latin words, letters separated by dots.
+* **Weak spots** found in the error analysis: rare words, short Latin words, look-alikes of көт, and (since v1.1)
+  euphemisms like "задалбал". ALL CAPS and letters separated by dots were fixed in v1.1.
+* **Test set reuse.** The test set was evaluated for v1.0 and again for v1.1 (see "Honest note" at the top).
+* **Reproducibility across hardware.** The same code and seed give slightly different models on an Apple M3 Pro
+  and a Colab T4 GPU (floating-point differences), so the chosen threshold can differ (v1.0: 0.93, v1.1: 0.77).
 * **Scope.** Kazakh and mixed Kazakh–Russian comments only; purely Russian comments were not part of the data.
 * **Video.** Quality depends on speech recognition (a misrecognised word is not bleeped) and was demonstrated on a
   synthetic TTS clip, not on real recordings. CTC word times are accurate to roughly ±0.1 s, hence the padding.

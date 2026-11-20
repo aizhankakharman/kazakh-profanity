@@ -157,7 +157,22 @@ def apply_beeps(src: Path, dst: Path, spans: list[tuple[float, float]], duration
     ffmpeg(*args, *codec, str(dst))
 
 
-def censor_media(det: ProfanityDetector, asr: Asr, src: str | Path, dst: str | Path | None = None) -> dict:
+def apply_correction(words: list[TimedWord], corrected: str) -> None:
+    """Human-in-the-loop: a moderator fixes ASR mistakes word by word.
+
+    The corrected transcript must have the same number of words as the ASR one,
+    so every word keeps its own start/end time and the bleeps stay in sync.
+    """
+    new = corrected.split()
+    if len(new) != len(words):
+        raise ValueError(f"the corrected transcript has {len(new)} words, the ASR one has {len(words)}; "
+                         "change words, do not add or remove them")
+    for w, t in zip(words, new):
+        w.text = t
+
+
+def censor_media(det: ProfanityDetector, asr: Asr, src: str | Path, dst: str | Path | None = None,
+                 corrected: str | None = None) -> dict:
     src = Path(src)
     video = has_video(src)
     if dst is None:
@@ -168,12 +183,17 @@ def censor_media(det: ProfanityDetector, asr: Asr, src: str | Path, dst: str | P
         extract_audio(src, wav)
         duration = sf.info(str(wav)).duration
         words = asr.transcribe(wav)
+    asr_transcript = " ".join(w.text for w in words)
+    if corrected and corrected.split() != asr_transcript.split():
+        apply_correction(words, corrected)
     transcript = mark_profane(det, words)
     spans = intervals(words, duration)
     apply_beeps(src, dst, spans, duration, video)
     report = {
         "input": str(src), "output": str(dst), "duration_s": round(duration, 2),
+        "asr_transcript": asr_transcript,
         "transcript": transcript,
+        "corrected_by_human": transcript.split() != asr_transcript.split(),
         "censored_transcript": " ".join("█" * len(w.text) if w.profane else w.text for w in words),
         "beeps": spans, "words": [asdict(w) for w in words],
     }
